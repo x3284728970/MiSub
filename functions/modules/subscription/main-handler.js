@@ -1138,8 +1138,9 @@ export async function handleMisubRequest(context) {
                     dnsMode:
                         url.searchParams.get('dns-mode') ||
                         url.searchParams.get('dnsMode') ||
-                        config.dnsMode ||
-                        'clean',
+                        (config.dnsMode === 'polluted' || config.dnsMode === 'clean'
+                            ? config.dnsMode
+                            : ''),
                 };
                 const rendered = await ProcessorService.renderOutput({
                     targetFormat,
@@ -1307,8 +1308,9 @@ export async function handleMisubRequest(context) {
         dnsMode:
             url.searchParams.get('dns-mode') ||
             url.searchParams.get('dnsMode') ||
-            config.dnsMode ||
-            'clean',
+            (config.dnsMode === 'polluted' || config.dnsMode === 'clean'
+                ? config.dnsMode
+                : ''),
     };
 
     const managedConfigUrl = buildManagedConfigUrl(request.url);
