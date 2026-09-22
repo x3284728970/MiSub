@@ -302,6 +302,9 @@ export const POLICY_GROUPS = {
             ...regionSupportGroups,
         ];
     },
+    // 路由器精简版：策略组结构与 STD 完全一致（ROUTER 规则引用的组都在这），
+    // 差异只在规则层 —— ROUTER 用 geosite/geoip 二进制，STD 用远程 rule-provider。
+    ROUTER: (proxies, options = {}) => POLICY_GROUPS.STD(proxies, options),
     // 完整配置：细化分类
     FULL: (proxies, options = {}) => {
         const proxyNames = proxies.map((p) => p.tag || p.name);
@@ -554,6 +557,27 @@ export const REMOTE_SOURCES = {
 };
 
 /**
+ * GEOSITE 分类在 Surge/Loon/QuantumultX 上的远程列表回退映射。
+ * 只覆盖 ACL4SSR 有对应 list 的分类；无映射的分类在非 mihomo 平台被跳过。
+ */
+const GEOSITE_SURGE_FALLBACK = {
+    'category-ads-all': 'ADS',
+    openai: 'AI',
+    netflix: 'STREAM',
+    apple: 'APPLE',
+    microsoft: 'MICROSOFT',
+    telegram: 'SOCIAL',
+};
+
+function geositeFallbackUrl(category, format) {
+    const key = GEOSITE_SURGE_FALLBACK[category];
+    const source = key ? REMOTE_SOURCES[key] : null;
+    if (!source) return null;
+    const url = source[format] || source.surge || source.clash;
+    return url ? pinRemoteRuleUrl(url) : null;
+}
+
+/**
  * 分流规则集 (通过 RULE-SET 引用远程源)
  */
 export const RULE_SETS = {
@@ -603,6 +627,28 @@ export const RULE_SETS = {
         'GEOIP,CN,DIRECT',
         `MATCH,${DEFAULT_RELAY_GROUP}`,
     ],
+    ROUTER: [
+        // 路由器精简版（面向 OpenClash/mihomo，弱 CPU 设备如 MT7621 / Newifi D2）：
+        // 全部使用 mihomo 内置 geosite/geoip 二进制规则，零远程 rule-provider 下载，
+        // 匹配走 geodata trie（O(log n)），无 classical 规则线性扫描。
+        // 规则条数：STD 档 40+ 条 + 5 个远程 provider(数千条) → 本档 15 条。
+        // 依赖的 geosite 分类在 loyalsoldier GeoSite.dat / sing-geosite 中全部存在：
+        // category-ads-all / openai / netflix / disney / youtube / apple /
+        // microsoft / telegram / google / github。OpenClash 默认自带这些分类。
+        'GEOSITE,category-ads-all,🎬 视频广告',
+        ...AI_DOMAIN_RULE_LINES,
+        'GEOSITE,openai,🤖 智能 AI',
+        'GEOSITE,netflix,🎥 流媒体',
+        'GEOSITE,disney,🎥 流媒体',
+        'GEOSITE,youtube,🚀 节点选择',
+        'GEOSITE,apple,🍎 Apple',
+        'GEOSITE,microsoft,Ⓜ️ Microsoft',
+        'GEOSITE,telegram,📲 Telegram',
+        'GEOSITE,google,🚀 节点选择',
+        'GEOSITE,github,🚀 节点选择',
+        'GEOIP,CN,DIRECT',
+        `MATCH,${DEFAULT_SELECT_GROUP}`,
+    ],
 };
 
 /**
@@ -636,6 +682,33 @@ export function translateRuleLine(line, format) {
                 return `filter_remote, ${source.quanx || source.clash}, tag=${source.name}, force-policy=${target}, update-interval=86400`;
             default:
                 return null;
+        }
+    }
+
+    if (type === 'GEOSITE') {
+        // GEOSITE 规则：mihomo/clash.meta 原生支持（geodata 二进制 trie 匹配，
+        // 弱 CPU 路由器上远快于 classical rule-provider 的线性扫描）。
+        // 其他平台回退到 ACL4SSR 远程列表；无对应列表的分类直接跳过（走 MATCH 兜底）。
+        const geositeTag = `geosite-${value.toLowerCase()}`;
+        switch (format) {
+            case 'clash':
+                return line;
+            case 'singbox':
+            case 'sing-box':
+                return { type: 'rule_set', tag: geositeTag, outbound: target };
+            case 'surge':
+            case 'loon': {
+                const fallbackUrl = geositeFallbackUrl(value, 'surge');
+                return fallbackUrl ? `RULE-SET,${fallbackUrl},${target}` : null;
+            }
+            case 'quanx': {
+                const fallbackUrl = geositeFallbackUrl(value, 'quanx');
+                return fallbackUrl
+                    ? `filter_remote, ${fallbackUrl}, tag=${geositeTag}, force-policy=${target}, update-interval=86400`
+                    : null;
+            }
+            default:
+                return line;
         }
     }
 
@@ -703,15 +776,25 @@ export function getRemoteProviderDefinitions(format, ruleLines) {
                 interval: 86400,
             };
         } else if (format === 'singbox' || format === 'sing-box') {
+            // GEOSITE/GEOIP 规则产生的 rule_set tag（如 geosite-openai / geosite-disney）
+            // 可能不在 REMOTE_SOURCES 中，直接映射到 sing-geosite / sing-geoip 的 .srs 产物。
+            let url = source.singbox;
+            if (!url) {
+                const geositeName = /^geosite-(.+)$/.exec(tag)?.[1];
+                const geoipName = /^geoip-(.+)$/.exec(tag)?.[1];
+                if (geositeName) url = `${SING_GEOSITE_BASE}/geosite-${geositeName}.srs`;
+                else if (geoipName) url = `${SING_GEOIP_BASE}/geoip-${geoipName}.srs`;
+            }
+            if (!url) return;
             providers[tag] = {
                 tag: tag,
                 type: 'remote',
-                format: String(source.singbox || '')
+                format: String(url)
                     .toLowerCase()
                     .endsWith('.srs')
                     ? 'binary'
                     : 'source',
-                url: pinRemoteRuleUrl(source.singbox),
+                url: pinRemoteRuleUrl(url),
                 update_interval: '24h',
                 download_detour: DNS_PROXY_GROUP,
             };

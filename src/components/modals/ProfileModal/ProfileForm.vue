@@ -410,6 +410,7 @@
                             <option value="std">{{ t('profileModal.ruleStandard') }}</option>
                             <option value="full">{{ t('profileModal.ruleFull') }}</option>
                             <option value="relay">{{ t('profileModal.ruleRelay') }}</option>
+                            <option value="router">{{ t('profileModal.ruleRouter') }}</option>
                         </select>
                     </div>
 

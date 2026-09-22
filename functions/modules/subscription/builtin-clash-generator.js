@@ -226,6 +226,9 @@ export function generateBuiltinClashConfig(nodeList, options = {}) {
             mode: 'rule',
             'log-level': 'info',
             'external-controller': '127.0.0.1:9090',
+            // ROUTER 精简档面向 mihomo/OpenClash：强制 geodata 二进制匹配
+            // （geosite/geoip 规则的前提；OpenClash 自身配置保持一致即可生效）
+            ...(levelKey === 'ROUTER' && enableMihomoSyntax ? { 'geodata-mode': true } : {}),
 
             dns: dnsConfig,
 

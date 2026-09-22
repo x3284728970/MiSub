@@ -834,6 +834,14 @@ export async function handleMisubRequest(context) {
             url.searchParams.get('ruleLevel') ||
             resolvedProfileLevel ||
             resolvedGlobalLevel;
+
+        // [路由器优化] UA 为 OpenClash 时强制使用 ROUTER 精简档：
+        // 纯 geosite/geoip 二进制规则、零远程 rule-provider，对弱 CPU 路由器
+        // （MT7621 / Newifi D2 等）友好；其他 clash 客户端保持原档位不变。
+        // 缓存只存节点列表，渲染按请求现场生成，UA 分发不受缓存影响。
+        if (/openclash/i.test(userAgentHeader)) {
+            ruleLevel = 'router';
+        }
     }
 
     // === 缓存机制：快速响应客户端请求 ===
