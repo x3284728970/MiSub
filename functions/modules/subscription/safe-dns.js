@@ -205,7 +205,16 @@ export function resolveSafeDnsConfig(raw, options = {}) {
         return clone(rawOverride);
     }
 
-    const policy = resolveDnsPolicy(raw, options);
+    // [DNS 加固] harden=true 且用户未显式指定 dnsMode 时，按 POLLUTED 策略走：
+    // 境外查询默认走 DoH（默认 https://8.8.8.8/dns-query，IP 直连无需 bootstrap），
+    // 且全部经 proxyGroup 出口转发 —— TLS 加密后出口节点看不到明文域名，
+    // 比 UDP DNS over proxy（VPS 侧可见完整域名查询记录）防泄露一档。
+    // 用于 ROUTER 精简档（OpenClash 等路由器场景）；显式 clean/polluted 仍优先。
+    const hardenCandidate = Boolean(options.harden) && !String(options.mode || '').trim();
+    const policy = resolveDnsPolicy(raw, {
+        ...options,
+        mode: hardenCandidate ? DNS_MODES.POLLUTED : options.mode,
+    });
     const proxyGroup = String(options.proxyGroup || DNS_PROXY_GROUP);
     const foreign = policy.mode === DNS_MODES.POLLUTED ? policy.polluted : policy.foreign;
     const dns = clone(DEFAULT_DNS_CONFIG);

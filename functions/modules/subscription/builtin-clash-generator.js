@@ -213,9 +213,13 @@ export function generateBuiltinClashConfig(nodeList, options = {}) {
         }
 
         // 基础配置：安全默认值，不再依赖 KV 覆盖才能避免 DNS 递归。
+        // ROUTER 精简档（OpenClash 等路由器场景）自动启用 DNS 加固：
+        // 境外 DNS 查询走 DoH + 代理出口（TLS 加密，出口节点不可见明文域名）；
+        // 用户显式 ?dns-mode=clean/polluted 仍优先，其他客户端（clash-verge 等）行为不变。
         const dnsConfig = resolveSafeDnsConfig(options.customDnsOverride || '', {
             mode: options.dnsMode,
             proxyGroup: DNS_PROXY_GROUP,
+            harden: levelKey === 'ROUTER',
         });
 
         const config = {

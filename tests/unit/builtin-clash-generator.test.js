@@ -174,4 +174,74 @@ describe('Clash 内置生成器', () => {
 
         expect(result.startsWith('#SUBSCRIBED')).toBe(false);
     });
+
+    describe('ROUTER 精简档（OpenClash UA 场景）', () => {
+        const node = 'ss://YWVzLTEyOC1nY206cGFzcw==@1.2.3.4:8388#Test';
+        const routerOptions = { ruleLevel: 'router', userAgent: 'OpenClash/v0.46.003' };
+
+        it('ROUTER 档应输出 geodata-mode 且规则全部为 GEOSITE/GEOIP（零远程 rule-provider）', () => {
+            const parsed = yaml.load(generateBuiltinClashConfig(node, routerOptions));
+
+            expect(parsed['geodata-mode']).toBe(true);
+            expect(parsed['rule-providers']).toBeUndefined();
+            expect(parsed.rules.every((rule) => /^GEOSITE,|^GEOIP,|^DOMAIN-SUFFIX,|^MATCH,/.test(rule))).toBe(true);
+            expect(parsed.rules).toContain('GEOSITE,category-ads-all,🎬 视频广告');
+            expect(parsed.rules[parsed.rules.length - 1]).toMatch(/^MATCH,/);
+        });
+
+        it('ROUTER 档 DNS 应自动加固：境外走 DoH 并经 DNS 出口组，国内保持明文国内 DNS', () => {
+            const parsed = yaml.load(generateBuiltinClashConfig(node, routerOptions));
+
+            expect(parsed.dns.nameserver).toEqual([
+                'https://8.8.8.8/dns-query#🌐 DNS 出口',
+                'https://1.1.1.1/dns-query#🌐 DNS 出口',
+            ]);
+            // 加固后兜底也用加密通道（防投毒双保险）
+            expect(parsed.dns.fallback).toEqual([
+                'https://8.8.8.8/dns-query#🌐 DNS 出口',
+                'https://1.1.1.1/dns-query#🌐 DNS 出口',
+            ]);
+            expect(parsed.dns['nameserver-policy']['geosite:cn']).toEqual([
+                '223.5.5.5',
+                '119.29.29.29',
+            ]);
+            expect(parsed.dns['nameserver-policy']['geosite:geolocation-!cn']).toEqual([
+                'https://8.8.8.8/dns-query#🌐 DNS 出口',
+                'https://1.1.1.1/dns-query#🌐 DNS 出口',
+            ]);
+            // 机场域名解析保持国内（首连不可走代理，chicken-and-egg）
+            expect(parsed.dns['proxy-server-nameserver']).toEqual([
+                '223.5.5.5',
+                '119.29.29.29',
+            ]);
+            expect(parsed.dns['respect-rules']).toBe(true);
+        });
+
+        it('ROUTER 档显式 ?dns-mode=clean 时应尊重用户选择（回退 UDP 出口）', () => {
+            const parsed = yaml.load(
+                generateBuiltinClashConfig(node, { ...routerOptions, dnsMode: 'clean' })
+            );
+
+            expect(parsed['geodata-mode']).toBe(true);
+            expect(parsed.dns.nameserver).toContain('udp://8.8.8.8:53#🌐 DNS 出口');
+            expect(parsed.dns.fallback).toEqual([]);
+        });
+
+        it('非 ROUTER 档（默认 std）行为保持不变：无 geodata-mode，UDP DNS 出口', () => {
+            const parsed = yaml.load(generateBuiltinClashConfig(node, { userAgent: 'clash-verge/v2.4.5' }));
+
+            expect(parsed['geodata-mode']).toBeUndefined();
+            expect(parsed.dns.nameserver).toContain('udp://8.8.8.8:53#🌐 DNS 出口');
+            expect(parsed.dns.fallback).toEqual([]);
+        });
+
+        it('非 ROUTER 档显式 polluted 行为保持不变', () => {
+            const parsed = yaml.load(
+                generateBuiltinClashConfig(node, { userAgent: 'clash-verge/v2.4.5', dnsMode: 'polluted' })
+            );
+
+            expect(parsed['geodata-mode']).toBeUndefined();
+            expect(parsed.dns.nameserver).toContain('https://8.8.8.8/dns-query#🌐 DNS 出口');
+        });
+    });
 });

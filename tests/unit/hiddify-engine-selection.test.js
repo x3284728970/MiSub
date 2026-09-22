@@ -74,4 +74,25 @@ describe('Hiddify subscription compatibility', () => {
             hiddifyCompatible: true,
         });
     });
+
+    it('dns-mode 缺省时 dnsMode 为空串（交给生成器按场景取默认），显式传值则保留', () => {
+        expect(resolveBuiltinRequestOptions({ searchParams: new URLSearchParams('') }).dnsMode).toBe('');
+        expect(resolveBuiltinRequestOptions({ searchParams: new URLSearchParams('') }).hiddifyCompatible).toBe(false);
+        expect(
+            resolveBuiltinRequestOptions({
+                searchParams: new URLSearchParams('dns-mode=clean'),
+            }).dnsMode
+        ).toBe('clean');
+        expect(
+            resolveBuiltinRequestOptions({
+                searchParams: new URLSearchParams('dnsMode=polluted'),
+            }).dnsMode
+        ).toBe('polluted');
+        // 非法值视同未指定
+        expect(
+            resolveBuiltinRequestOptions({
+                searchParams: new URLSearchParams('dns-mode=weird'),
+            }).dnsMode
+        ).toBe('');
+    });
 });

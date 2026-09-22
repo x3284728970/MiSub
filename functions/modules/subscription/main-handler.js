@@ -504,12 +504,14 @@ export function resolveEffectiveEngine({
 
 export function resolveBuiltinRequestOptions({ searchParams, userAgent = '' } = {}) {
     const params = searchParams || new URLSearchParams('');
-    const dnsMode = params.get('dns-mode') || params.get('dnsMode') || '';
+    const dnsModeParam = (params.get('dns-mode') || params.get('dnsMode') || '').toLowerCase();
     return {
         userAgent,
         searchParams: params,
         hiddifyCompatible: isHiddifyAgent(userAgent),
-        dnsMode: dnsMode.toLowerCase() === 'polluted' ? 'polluted' : 'clean',
+        // 空串 = 未显式指定（由生成器按目标场景取默认，如 ROUTER 档自动 DNS 加固）；
+        // 'clean' / 'polluted' 才是用户显式选择，生成器必须尊重。
+        dnsMode: dnsModeParam === 'polluted' || dnsModeParam === 'clean' ? dnsModeParam : '',
     };
 }
 
