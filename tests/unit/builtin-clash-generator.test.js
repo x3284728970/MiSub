@@ -189,6 +189,23 @@ describe('Clash 内置生成器', () => {
             expect(parsed.rules[parsed.rules.length - 1]).toMatch(/^MATCH,/);
         });
 
+        it('ROUTER 档含国内域名直连与内网直连优先规则', () => {
+            const parsed = yaml.load(generateBuiltinClashConfig(node, routerOptions));
+
+            // 国内域名直连：域名级分流，避免海外 CDN IP 被拖进代理
+            expect(parsed.rules).toContain('GEOSITE,cn,DIRECT');
+            // 内网域名/IP 直连：路由器后台 / NAS / 局域网设备不被代理劫持
+            expect(parsed.rules).toContain('GEOSITE,private,DIRECT');
+            expect(parsed.rules).toContain('GEOIP,private,DIRECT,no-resolve');
+            // 内网直连必须在 GEOIP,CN 与 MATCH 之前（靠前才生效）
+            const idxPrivate = parsed.rules.indexOf('GEOIP,private,DIRECT,no-resolve');
+            const idxCnGeoip = parsed.rules.indexOf('GEOIP,CN,DIRECT');
+            const idxMatch = parsed.rules.indexOf(parsed.rules[parsed.rules.length - 1]);
+            expect(idxPrivate).toBeGreaterThanOrEqual(0);
+            expect(idxPrivate).toBeLessThan(idxCnGeoip);
+            expect(idxCnGeoip).toBeLessThan(idxMatch);
+        });
+
         it('ROUTER 档 DNS 应自动加固：境外走 DoH 并经 DNS 出口组，国内保持明文国内 DNS', () => {
             const parsed = yaml.load(generateBuiltinClashConfig(node, routerOptions));
 

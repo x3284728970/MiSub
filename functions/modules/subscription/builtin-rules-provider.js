@@ -659,12 +659,17 @@ export const RULE_SETS = {
     ROUTER: [
         // 路由器精简版（面向 OpenClash/mihomo，弱 CPU 设备如 MT7621 / Newifi D2）：
         // 全部使用 mihomo 内置 geosite/geoip 二进制规则，零远程 rule-provider 下载，
-        // 匹配走 geodata trie（O(log n)），无 classical 规则线性扫描。
-        // 规则条数：STD 档 40+ 条 + 5 个远程 provider(数千条) → 本档 15 条。
+        // 匹配走 geodata trie（O(log n)），无大列表 classical 规则线性扫描。
         // 依赖的 geosite 分类在 loyalsoldier GeoSite.dat / sing-geosite 中全部存在：
-        // category-ads-all / openai / netflix / disney / youtube / apple /
+        // category-ads-all / cn / private / openai / netflix / disney / youtube / apple /
         // microsoft / telegram / google / github。OpenClash 默认自带这些分类。
+        // 优化点（2026-09-23）：
+        //   1. GEOSITE,cn,DIRECT —— 国内域名域名级直连，不再依赖解析后 IP 才判断，
+        //      避免「国内站点走了海外 CDN IP 被拖进代理」导致加载变慢（体验提升核心）。
+        //   2. GEOSITE,private / GEOIP,private —— 内网域名与内网 IP 优先直连，
+        //      路由器后台 / NAS / .local / 局域网设备不会被代理劫持。
         'GEOSITE,category-ads-all,🎬 视频广告',
+        'GEOSITE,private,DIRECT',
         ...AI_DOMAIN_RULE_LINES,
         'GEOSITE,openai,🤖 智能 AI',
         'GEOSITE,netflix,🎥 流媒体',
@@ -675,6 +680,8 @@ export const RULE_SETS = {
         'GEOSITE,telegram,📲 Telegram',
         'GEOSITE,google,🚀 节点选择',
         'GEOSITE,github,🚀 节点选择',
+        'GEOSITE,cn,DIRECT',
+        'GEOIP,private,DIRECT,no-resolve',
         'GEOIP,CN,DIRECT',
         `MATCH,${DEFAULT_SELECT_GROUP}`,
     ],
