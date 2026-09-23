@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import SubscriptionPanel from '../../src/components/subscriptions/SubscriptionPanel.vue';
-import { clearDomainNameMemory } from '../../src/utils/domain-name-memory.js';
+import {
+    clearDomainNameMemory,
+    rememberDomainName,
+} from '../../src/utils/domain-name-memory.js';
 
 /**
  * 订阅源「按站点自动折叠」回归测试。
@@ -100,5 +103,90 @@ describe('订阅源按站点折叠', () => {
         expect(wrapper.html()).toMatch(/折叠全部|Collapse all/);
         expect(wrapper.html()).not.toContain('www.example.com');
         expect(wrapper.findAll('.stub-card')).toHaveLength(2);
+    });
+
+    describe('重命名整组的命名来源', () => {
+        const findRenameBtn = (wrapper) =>
+            wrapper
+                .findAll('button')
+                .find(
+                    (b) =>
+                        b.text().includes('重命名整组') ||
+                        b.text().includes('Rename all')
+                );
+
+        it('优先使用命名记忆，不被机场自报名（随机 token）覆盖', async () => {
+            // 用户此前确认过名字（星际穿越），记忆 key 为根域
+            rememberDomainName('gsafevpn.com', '星际穿越');
+            const subs = [
+                {
+                    ...makeSub('a', 's1', 'https://sub1.gsafevpn.com/x/token1'),
+                    detectedName: 'xnkiv58h',
+                },
+                {
+                    ...makeSub('b', 's2', 'https://sub1.gsafevpn.com/x/token2'),
+                    detectedName: 'xnkiv58h',
+                },
+            ];
+            const wrapper = mountPanel(subs);
+            await wrapper.vm.$nextTick();
+
+            const btn = findRenameBtn(wrapper);
+            expect(btn).toBeTruthy();
+            await btn.trigger('click');
+
+            const emitted = wrapper.emitted('rename-group');
+            expect(emitted).toBeTruthy();
+            // payload = [ids, baseName]：baseName 必须是记忆名，而不是 Profile-Title 的随机串
+            expect(emitted[0][1]).toBe('星际穿越');
+        });
+
+        it('子域订阅也能命中根域命名记忆', async () => {
+            // 记忆 key 由 SubscriptionGroupsView 写入时为根域（inferAirportRootDomain 归一化）
+            rememberDomainName('vpn.example.com', '老机场');
+            const subs = [
+                {
+                    ...makeSub('a', 's1', 'https://sub1.vpn.example.com/token1'),
+                    detectedName: 'random99',
+                },
+                {
+                    ...makeSub('b', 's2', 'https://sub1.vpn.example.com/token2'),
+                    detectedName: 'random99',
+                },
+            ];
+            const wrapper = mountPanel(subs);
+            await wrapper.vm.$nextTick();
+
+            const btn = findRenameBtn(wrapper);
+            expect(btn).toBeTruthy();
+            await btn.trigger('click');
+
+            const emitted = wrapper.emitted('rename-group');
+            expect(emitted).toBeTruthy();
+            expect(emitted[0][1]).toBe('老机场');
+        });
+
+        it('无命名记忆时回退到机场自报名（detectedName）', async () => {
+            const subs = [
+                {
+                    ...makeSub('a', 's1', 'https://sub1.gsafevpn.com/x/token1'),
+                    detectedName: 'xnkiv58h',
+                },
+                {
+                    ...makeSub('b', 's2', 'https://sub1.gsafevpn.com/x/token2'),
+                    detectedName: 'xnkiv58h',
+                },
+            ];
+            const wrapper = mountPanel(subs);
+            await wrapper.vm.$nextTick();
+
+            const btn = findRenameBtn(wrapper);
+            expect(btn).toBeTruthy();
+            await btn.trigger('click');
+
+            const emitted = wrapper.emitted('rename-group');
+            expect(emitted).toBeTruthy();
+            expect(emitted[0][1]).toBe('xnkiv58h');
+        });
     });
 });

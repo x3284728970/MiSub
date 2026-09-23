@@ -82,8 +82,20 @@
     };
 
     /**
+     * 查命名记忆（域名 -> 用户确认过的机场名）。
+     * 记忆 key 与写入侧（SubscriptionGroupsView）一致：inferAirportRootDomain 归一化后的主域名。
+     * 这样 sub1.gsafevpn.com 也能命中记忆里存的 gsafevpn.com。
+     */
+    const rememberedNameFor = (host) => {
+        if (!host) return '';
+        const key = inferAirportRootDomain(`https://${host}`) || host.replace(/^www\./, '');
+        return lookupDomainName(key);
+    };
+
+    /**
      * 取该折叠组可用于重命名的名字（基础名）。
      * 优先级：
+     *   0. 命名记忆（用户确认过的名字最准，防止机场自报名 Profile-Title 覆盖）
      *   1. 组内任一订阅的识别名（detectedName，来自 Profile-Title / 官网标题）
      *   2. 组域名推断出的品牌名（如 gsafevpn.com -> Gsafevpn）
      *   3. 组域名原文
@@ -111,11 +123,17 @@
     };
 
     const groupDetectedName = (group) => {
+        const host = group?.host || '';
+        // 0. 命名记忆优先：用户确认过的名字最准，防止机场自报名（如随机 token 串）覆盖
+        const remembered = rememberedNameFor(host);
+        if (remembered) return remembered;
+        // 1. 组内任一订阅的识别名
         const hit = (group?.items || []).find(
             (item) => typeof item?.detectedName === 'string' && item.detectedName.trim()
         );
         if (hit) return hit.detectedName.trim();
-        if (group?.host) return prettifyHost(group.host);
+        // 2. 组域名推断出的品牌名
+        if (host) return prettifyHost(host);
         return '';
     };
 
@@ -133,10 +151,8 @@
         // 依赖 version，改名后自动重算
         void nameMemoryVersion.value;
         const host = group?.host || '';
-        if (host) {
-            const remembered = lookupDomainName(host);
-            if (remembered) return remembered;
-        }
+        const remembered = rememberedNameFor(host);
+        if (remembered) return remembered;
         const detected = groupDetectedName(group);
         if (detected) return detected;
         return host || t('subscriptions.otherSources');
